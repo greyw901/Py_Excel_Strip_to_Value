@@ -1,0 +1,178 @@
+================================================================
+  excel_strip_to_value.py - Instruction
+================================================================
+
+----------------------------------------------------------------
+  FOR USERS
+----------------------------------------------------------------
+
+What it does:
+Many accounting-software reports (Balance Sheet, P&L, etc.) export as a mess
+of merged cells and amounts stored as text. This tool makes a cleaned-up
+copy of each report: it unmerges everything, deletes the rows and columns
+that are completely empty across the whole sheet, turns the text amounts
+into real numbers formatted as 1,234.56, and tidies up column widths and
+text alignment. The original file is never touched - a new file is created
+next to it.
+
+STEP 1: Put excel_strip_to_value.py in the same folder as the Excel
+        file(s) you want to clean up.
+
+STEP 2: Close those Excel file(s) if they are currently open. The script
+        needs to make and open its own copy of each file.
+
+STEP 3: Double-click excel_strip_to_value.py. A black window opens and
+        lists the files it found, then asks you to pick a mode:
+
+        ============================================================
+        Excel Strip To Value
+        ============================================================
+
+        Inputs: 2
+           1. "OESB -  BS - JUN 26.xlsx"
+           2. "OESB - PL DETAILED -  JUN 26.xlsx"
+
+        Select mode:
+           [1] Report mode  - flatten everything to static values (system-exported reports)
+           [2] Working mode - keep live formulas (sheets you're still building/using)
+           [0] Cancel & close
+
+        Mode:
+
+STEP 4: Type a number and press Enter:
+           1 = Report mode  - use this for a report straight out of the
+               accounting system (Balance Sheet, P&L, etc). Every cell
+               becomes a plain value - safe and simple, nothing left live.
+           2 = Working mode - use this for a sheet you built yourself and
+               are still using, that has real formulas in it. Formulas are
+               left alone and kept working; only the text-amount cells
+               around them get converted.
+           0 = Cancel - closes the window, no files are touched.
+
+STEP 5: It then runs on its own - you don't need to click or type anything
+        else - and shows a report like this:
+
+        Processing
+        Cleaning "OESB -  BS - JUN 26.xlsx" ...
+           Sheet "Page 1" : rows removed 1, cols removed 4, numbers converted 82
+        Cleaning "OESB - PL DETAILED -  JUN 26.xlsx" ...
+           Sheet "Page 1" : rows removed 4, cols removed 12, numbers converted 165
+
+        Outputs: 2
+           1. "OESB -  BS - JUN 26_Clean.xlsx"
+           2. "OESB - PL DETAILED -  JUN 26_Clean.xlsx"
+
+        Elapsed: 1.8s
+        ------------------------------------------------------------
+        [Enter] to close...
+
+STEP 6: Press [Enter] to close the window. The cleaned file(s) are now in
+        the same folder, named "<original name>_Clean.xlsx". The
+        original file(s) are untouched.
+
+If something fails on one of the files, the window also shows a
+"Failed: n" list and an extra option:
+        [0] save error log and close
+Press [0] instead of [Enter] to save a text log of what went wrong, then
+send that log file along with the input Excel file for Grey/the developer
+to look at.
+
+----------------------------------------------------------------
+  FOR DEVELOPER(S)
+----------------------------------------------------------------
+
+Scope: every .xlsx / .xlsm / .xls file sitting next to the script gets
+processed (every worksheet in each workbook), except Excel's own lock
+files ("~$...") and anything already ending in "_Clean.xlsx" (so re-runs
+don't try to clean their own output).
+
+Two modes, one shared pipeline: prompt_mode() returns a single
+preserve_formulas bool, threaded through process_workbook() into
+clean_worksheet(). [0] at the mode prompt raises UserCancelled, caught
+once in main() - the cancel/abort signal never travels as a sentinel
+return value through the call stack. When preserve_formulas is True, one
+extra bulk read (used.Formula, same shape as used.Value, one COM call for
+the whole sheet) builds a formula_mask; a cell with formula_mask True is
+always treated as "content" in the blank-row/column scan regardless of
+what it currently displays, and is never fed to parse_amount. This was
+tested against a live =SUM(Z16:AA19) formula: after unmerge + deleting the
+blank columns/rows around it (including the blank AA column the range
+originally touched), Excel's own object model auto-adjusted it in place
+to =SUM(O15:O18) and it still computed correctly - this is native Excel
+delete behavior, nothing the script has to compute itself.
+
+Why win32com, not openpyxl: the script edits a COPY of the real file in
+place (unmerge, delete rows/columns, reformat) rather than rebuilding a
+workbook from scratch, so the original fonts/borders/fills survive
+untouched. openpyxl drops formatting it doesn't model when it re-saves an
+existing file, so it is only used here (script-output-office-conventions)
+for generating brand-new files, never for editing one.
+
+Blank row/column removal: a row or column is deleted only when it is empty
+across the WHOLE sheet, not just empty within one row. This is deliberate -
+these reports use different columns for different indentation depths (an
+account code can sit in column B, C or D depending on how nested it is), so
+deleting a column just because it happens to be blank in one particular row
+would shift that row out of alignment with the others. Rows/columns are
+each deleted in a single batched Range(...).Delete() call (addresses
+joined with commas) rather than one COM call per row/column.
+
+Number detection (parse_amount): strips a surrounding "(...)" or a leading
+"-" as the negative sign, then requires the remainder to fully match
+digits/commas with at most one decimal point (re.fullmatch) before calling
+float() on it. Anything that doesn't fully match - account codes like
+"100010BAL", dates, free text - is left alone as text. Already-numeric
+cells (some % columns come in pre-typed as float/int) skip parsing but
+still get the number format applied.
+
+Write order matters: NumberFormat is set on a column BEFORE its Value is
+written. The source cells are Text-formatted ("@"); assigning a plain
+float into a Text cell without changing the format first gets coerced
+back into a text string instead of a real number.
+
+The numeric-conversion write is normally one batched Range(...).Value
+assignment per amount column (cheap - one COM call covers every row).
+That batched write cannot be used on a column that also contains a live
+formula cell, because assigning Value to the whole range would overwrite
+the formula with its last-calculated number. So in Working mode, a
+column that mixes a formula with text-amount cells falls back to
+per-cell Cells(r, c).Value writes touching only the text-amount rows,
+leaving the formula row completely untouched. Report mode never needs
+this fallback - formula_mask is None there, so every amount column still
+gets the single batched write.
+
+Column width / alignment (done after the row/column deletes, using a
+fresh read of the final UsedRange - not the pre-delete column index map,
+since deleting shifts positions): a column counts as "amount" if ANY
+surviving cell in it is a real number. Amount columns: AutoFit width (so
+a number is never clipped) + right-aligned. Every other column: reset to
+ws.StandardWidth (NOT autofit, so a long label can't stretch the column)
++ left-aligned. WrapText is switched off for the whole UsedRange right
+after unmerging.
+
+Known side effect: a column can end up holding both a header/label (e.g.
+a timestamp in row 1) and real amounts further down, because of the
+indentation-depth layout described above. That whole column gets the
+accounting number format applied - harmless, since NumberFormat has no
+visible effect on a text-valued cell.
+
+Dependencies: pywin32 (win32com.client), and Microsoft Excel must actually
+be installed on the machine - this drives real Excel via COM automation,
+it does not use a file-format library. Windows only.
+
+----------------------------------------------------------------
+  ENVIRONMENT SETUP (one-time only)
+----------------------------------------------------------------
+
+- Windows, with Microsoft Excel installed.
+- Python 3.10 or newer.
+- Install the one dependency:
+      pip install pywin32
+
+----------------------------------------------------------------
+  CONTACT
+----------------------------------------------------------------
+
+Author:       Yeoh Huey Sun
+Last updated: 2026-11-07
+================================================================
