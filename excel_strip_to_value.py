@@ -103,26 +103,92 @@ class UserCancelled(Exception):
     pass
 
 
-def prompt_mode(inputs: list[str]) -> bool:
-    """Shows the Inputs list + mode menu, returns True for Working mode
-    (preserve formulas). Raises UserCancelled on [0]."""
-    print(f"Inputs: {len(inputs)}")
-    for i, name in enumerate(inputs, 1):
-        print(f"   {i}. \"{name}\"")
-    print()
-    print("Select mode:")
-    print("   [1] Report mode  - flatten everything to static values (system-exported reports)")
-    print("   [2] Working mode - keep live formulas (sheets you're still building/using)")
-    print("   [0] Cancel & close")
-    print()
+class BackOneStep(Exception):
+    pass
+
+
+def clear_screen() -> None:
+    os.system("cls")
+
+
+def print_banner() -> None:
+    print("=" * 60)
+    print("Excel Strip To Value")
+    print("=" * 60)
+
+
+def parse_selection(raw: str, n: int) -> list[int] | None:
+    """Parses a comma/space-separated list of 1-based numbers into sorted,
+    de-duplicated 0-based indices. Returns None if any token isn't a valid
+    in-range number."""
+    tokens = [t for t in re.split(r"[,\s]+", raw.strip()) if t]
+    if not tokens:
+        return None
+    indices = set()
+    for t in tokens:
+        if not t.isdigit():
+            return None
+        idx = int(t)
+        if idx < 1 or idx > n:
+            return None
+        indices.add(idx - 1)
+    return sorted(indices)
+
+
+def prompt_select_input(inputs: list[str]) -> list[str]:
+    """Shows the file-selection screen, returns the chosen subset in
+    original order. Raises UserCancelled on [0]."""
     while True:
-        choice = input("Mode: ").strip()
+        clear_screen()
+        print_banner()
+        print()
+        print("Select Input:")
+        for i, name in enumerate(inputs, 1):
+            print(f"   [{i}] \"{name}\"")
+        print()
+        print("-" * 60)
+        print("[Enter] Select all")
+        print("[#] Select (comma-separated for multiple, e.g. 1,3)")
+        print("[0] Cancel & close")
+        print()
+        choice = input("Input: ").strip()
         if choice == "0":
             raise UserCancelled()
+        if choice == "":
+            return list(inputs)
+        indices = parse_selection(choice, len(inputs))
+        if indices is None:
+            print("\nInvalid Input: enter one or more listed numbers, or [Enter] for all.")
+            input("[Enter] to continue...")
+            continue
+        return [inputs[i] for i in indices]
+
+
+def prompt_mode() -> bool:
+    """Shows the mode-selection screen, returns True for Working mode
+    (preserve formulas). Raises BackOneStep on [0], UserCancelled on [00]."""
+    while True:
+        clear_screen()
+        print_banner()
+        print()
+        print("Select mode:")
+        print("   [1] Report mode  - flatten everything to static values (system-exported reports)")
+        print("   [2] Working mode - keep live formulas (sheets you're still building/using)")
+        print("   [0] Back one step")
+        print("   [00] Cancel & close")
+        print()
+        print("-" * 60)
+        choice = input("Mode: ").strip()
+        if choice == "00":
+            raise UserCancelled()
+        if choice == "0":
+            raise BackOneStep()
         if choice == "1":
             return False
         if choice == "2":
             return True
+        print("\nInvalid Input: enter 1, 2, 0, or 00.")
+        input("[Enter] to continue...")
 
 
 def clean_worksheet(ws, preserve_formulas: bool) -> dict:
@@ -282,30 +348,41 @@ def write_error_log(failures: list[dict]) -> None:
 
 def main() -> None:
     start_time = time.time()
-    print("=" * 60)
-    print("Excel Strip To Value")
-    print("=" * 60)
+    clear_screen()
+    print_banner()
 
-    inputs = find_input_files()
-    if not inputs:
+    all_inputs = find_input_files()
+    if not all_inputs:
         print(f"\nInputs: 0")
         print("No Excel files found to clean.")
         print("-" * 60)
         input("[Enter] to close...")
         return
 
-    print()
     try:
-        preserve_formulas = prompt_mode(inputs)
+        while True:
+            selected = prompt_select_input(all_inputs)
+            try:
+                preserve_formulas = prompt_mode()
+                break
+            except BackOneStep:
+                continue
     except UserCancelled:
         print("\nCancelled.")
         return
+
+    clear_screen()
+    print_banner()
+    print()
+    print(f"Inputs: {len(selected)}")
+    for i, name in enumerate(selected, 1):
+        print(f"   {i}. \"{name}\"")
 
     outputs = []
     failures = []
 
     print("\nProcessing")
-    for name in inputs:
+    for name in selected:
         print(f"Cleaning \"{name}\" ...")
         try:
             result = process_workbook(os.path.join(INPUT_FOLDER, name), preserve_formulas)

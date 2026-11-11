@@ -22,7 +22,62 @@ STEP 2: Close those Excel file(s) if they are currently open. The script
         needs to make and open its own copy of each file.
 
 STEP 3: Double-click excel_strip_to_value.py. A black window opens and
-        lists the files it found, then asks you to pick a mode:
+        lists the files it found, asking which ones to clean:
+
+        ============================================================
+        Excel Strip To Value
+        ============================================================
+
+        Select Input:
+           [1] "OESB -  BS - JUN 26.xlsx"
+           [2] "OESB - PL DETAILED -  JUN 26.xlsx"
+
+        ------------------------------------------------------------
+        [Enter] Select all
+        [#] Select (comma-separated for multiple, e.g. 1,3)
+        [0] Cancel & close
+
+        Input:
+
+STEP 4: Choose which file(s) to clean, then press Enter:
+           [Enter] (nothing typed) = process every file listed.
+           A number, e.g. "2"      = process only that one file.
+           Several numbers, e.g. "1,3" or "1 3" = process just those files.
+           0 = Cancel - closes the window, no files are touched.
+
+        A number outside the list, or anything that isn't a number, shows
+        "Invalid Input:" and asks again - it won't silently guess.
+
+STEP 5: Next it asks which mode to clean in:
+
+        ============================================================
+        Excel Strip To Value
+        ============================================================
+
+        Select mode:
+           [1] Report mode  - flatten everything to static values (system-exported reports)
+           [2] Working mode - keep live formulas (sheets you're still building/using)
+           [0] Back one step
+           [00] Cancel & close
+
+        ------------------------------------------------------------
+        Mode:
+
+STEP 6: Type a number and press Enter:
+           1  = Report mode  - use this for a report straight out of the
+                accounting system (Balance Sheet, P&L, etc). Every cell
+                becomes a plain value - safe and simple, nothing left live.
+           2  = Working mode - use this for a sheet you built yourself and
+                are still using, that has real formulas in it. Formulas are
+                left alone and kept working; only the text-amount cells
+                around them get converted.
+           0  = Back one step - returns to the file-selection screen in
+                STEP 3 so you can pick different file(s), without closing
+                the window.
+           00 = Cancel - closes the window, no files are touched.
+
+STEP 7: It then runs on its own - you don't need to click or type anything
+        else - and shows a report like this:
 
         ============================================================
         Excel Strip To Value
@@ -32,41 +87,21 @@ STEP 3: Double-click excel_strip_to_value.py. A black window opens and
            1. "OESB -  BS - JUN 26.xlsx"
            2. "OESB - PL DETAILED -  JUN 26.xlsx"
 
-        Select mode:
-           [1] Report mode  - flatten everything to static values (system-exported reports)
-           [2] Working mode - keep live formulas (sheets you're still building/using)
-           [0] Cancel & close
-
-        Mode:
-
-STEP 4: Type a number and press Enter:
-           1 = Report mode  - use this for a report straight out of the
-               accounting system (Balance Sheet, P&L, etc). Every cell
-               becomes a plain value - safe and simple, nothing left live.
-           2 = Working mode - use this for a sheet you built yourself and
-               are still using, that has real formulas in it. Formulas are
-               left alone and kept working; only the text-amount cells
-               around them get converted.
-           0 = Cancel - closes the window, no files are touched.
-
-STEP 5: It then runs on its own - you don't need to click or type anything
-        else - and shows a report like this:
-
         Processing
         Cleaning "OESB -  BS - JUN 26.xlsx" ...
            Sheet "Page 1" : rows removed 1, cols removed 4, numbers converted 82
         Cleaning "OESB - PL DETAILED -  JUN 26.xlsx" ...
-           Sheet "Page 1" : rows removed 4, cols removed 12, numbers converted 165
+           Sheet "Page 1" : rows removed 4, cols removed 10, numbers converted 165
 
         Outputs: 2
            1. "OESB -  BS - JUN 26_Clean.xlsx"
            2. "OESB - PL DETAILED -  JUN 26_Clean.xlsx"
 
-        Elapsed: 1.8s
+        Elapsed: 1.6s
         ------------------------------------------------------------
         [Enter] to close...
 
-STEP 6: Press [Enter] to close the window. The cleaned file(s) are now in
+STEP 8: Press [Enter] to close the window. The cleaned file(s) are now in
         the same folder, named "<original name>_Clean.xlsx". The
         original file(s) are untouched.
 
@@ -81,16 +116,29 @@ to look at.
   FOR DEVELOPER(S)
 ----------------------------------------------------------------
 
-Scope: every .xlsx / .xlsm / .xls file sitting next to the script gets
-processed (every worksheet in each workbook), except Excel's own lock
-files ("~$...") and anything already ending in "_Clean.xlsx" (so re-runs
-don't try to clean their own output).
+Scope: every .xlsx / .xlsm / .xls file sitting next to the script is a
+candidate (every worksheet in each workbook gets processed), except
+Excel's own lock files ("~$...") and anything already ending in
+"_Clean.xlsx" (so re-runs don't try to clean their own output). Which of
+those candidates actually get processed in a given run is then narrowed
+by prompt_select_input().
 
-Two modes, one shared pipeline: prompt_mode() returns a single
-preserve_formulas bool, threaded through process_workbook() into
-clean_worksheet(). [0] at the mode prompt raises UserCancelled, caught
-once in main() - the cancel/abort signal never travels as a sentinel
-return value through the call stack. When preserve_formulas is True, one
+Two-screen prompt, one shared pipeline: prompt_select_input() returns the
+chosen subset of filenames; prompt_mode() returns a single
+preserve_formulas bool. main() loops the two screens together: [0] at
+the file-selection screen or [00] at the mode screen raises
+UserCancelled, caught once in main() - the cancel/abort signal never
+travels as a sentinel return value through the call stack. [0] at the
+mode screen instead raises BackOneStep, caught locally in that same loop
+to re-show the file-selection screen (preserving the full candidate
+list, not the previous selection) - a deliberate second exception class
+alongside UserCancelled, since "go back a screen" and "abort the whole
+run" are different signals with different catch sites. Both prompts
+redraw from a blank screen (clear_screen() + print_banner()) on every
+loop iteration, including after an invalid-input retry, so a screen is
+always shown complete rather than appended onto whatever was above it.
+preserve_formulas is threaded through process_workbook() into
+clean_worksheet() same as before. When preserve_formulas is True, one
 extra bulk read (used.Formula, same shape as used.Value, one COM call for
 the whole sheet) builds a formula_mask; a cell with formula_mask True is
 always treated as "content" in the blank-row/column scan regardless of
@@ -174,5 +222,5 @@ it does not use a file-format library. Windows only.
 ----------------------------------------------------------------
 
 Author:       Yeoh Huey Sun
-Last updated: 2026-11-07
+Last updated: 2026-11-11
 ================================================================
