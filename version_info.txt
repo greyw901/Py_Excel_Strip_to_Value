@@ -1,0 +1,41 @@
+# UTF-8
+#
+# PyInstaller version-info file for Excel Strip to Value.
+#
+# Use it when building the exe:
+#   pyinstaller --onefile --version-file=version_info.txt excel_strip_to_value.py
+#
+# This embeds author/version info directly into the compiled .exe's
+# Windows Properties > Details tab. Unlike the docstring in the .py
+# source or the README/LICENSE in the repo, this travels WITH the
+# compiled binary even if it's forwarded on its own with no source
+# code or docs attached.
+
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+    ),
+  kids=[
+    StringFileInfo(
+      [
+      StringTable(
+        u'040904B0',
+        [StringStruct(u'CompanyName', u'Yeoh Huey Sun'),
+        StringStruct(u'FileDescription', u'Excel Strip to Value - clean exported Excel reports (unmerge, drop blank rows/cols, text amounts to numbers)'),
+        StringStruct(u'FileVersion', u'1.1_20261113'),
+        StringStruct(u'InternalName', u'Excel Strip to Value'),
+        StringStruct(u'LegalCopyright', u'Copyright (c) Yeoh Huey Sun'),
+        StringStruct(u'OriginalFilename', u'Excel Strip to Value.exe'),
+        StringStruct(u'ProductName', u'Excel Strip to Value'),
+        StringStruct(u'ProductVersion', u'1.1_20261113')])
+      ]),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)

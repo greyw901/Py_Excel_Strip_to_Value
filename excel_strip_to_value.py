@@ -28,12 +28,18 @@ os.chdir(SCRIPT_DIR)
 
 INPUT_FOLDER = SCRIPT_DIR
 OUTPUT_FOLDER = SCRIPT_DIR
-OUTPUT_SUFFIX = "_Clean"
+VERSION = "v1.1_20261113"  # not shown on screen; goes into the exe version file
+OUTPUT_SUFFIX = "_clean"
+# Own output, incl. collision copies (_clean_1) and older "_Clean" runs:
+# never offered as input on a re-run.
+OUTPUT_NAME_PATTERN = re.compile(
+    re.escape(OUTPUT_SUFFIX) + r"(_\d+)?\.(xlsx|xlsm|xls)$", re.IGNORECASE)
 AMOUNT_NUMBER_FORMAT = '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)'
 XL_CALC_MANUAL = -4135
 XL_CALC_AUTOMATIC = -4105
 XL_ALIGN_LEFT = -4131
 XL_ALIGN_RIGHT = -4152
+LINE_WIDTH = 60
 
 
 def col_letter(n: int) -> str:
@@ -81,7 +87,7 @@ def find_input_files() -> list[str]:
             continue
         if name.startswith("~$"):
             continue
-        if name.endswith(OUTPUT_SUFFIX + ".xlsx"):
+        if OUTPUT_NAME_PATTERN.search(name):
             continue
         files.append(name)
     return sorted(files)
@@ -112,9 +118,31 @@ def clear_screen() -> None:
 
 
 def print_banner() -> None:
-    print("=" * 60)
+    print("=" * LINE_WIDTH)
     print("Excel Strip To Value")
-    print("=" * 60)
+    print("=" * LINE_WIDTH)
+    print()
+
+
+def inputs_block(names: list[str]) -> list[str]:
+    lines = [f"Inputs: {len(names)}"]
+    lines += [f"   {i}. \"{name}\"" for i, name in enumerate(names, 1)]
+    return lines
+
+
+def open_screen(choices: list[str], error: bool) -> None:
+    """Clears the console and prints the screen's leading lines: banner,
+    the choices made so far, and the invalid-input notice from the
+    previous try."""
+    clear_screen()
+    print_banner()
+    if choices:
+        for line in choices:
+            print(line)
+        print()
+    if error:
+        print("Error: Invalid Input")
+        print()
 
 
 def parse_selection(raw: str, n: int) -> list[int] | None:
@@ -138,18 +166,18 @@ def parse_selection(raw: str, n: int) -> list[int] | None:
 def prompt_select_input(inputs: list[str]) -> list[str]:
     """Shows the file-selection screen, returns the chosen subset in
     original order. Raises UserCancelled on [0]."""
+    error = False
     while True:
-        clear_screen()
-        print_banner()
-        print()
+        open_screen([], error)
         print("Select Input:")
+        print()
         for i, name in enumerate(inputs, 1):
             print(f"   [{i}] \"{name}\"")
         print()
-        print("-" * 60)
+        print("-" * LINE_WIDTH)
         print("[Enter] Select all")
         print("[#] Select (comma-separated for multiple, e.g. 1,3)")
-        print("[0] Cancel & close")
+        print("[0] Exit")
         print()
         choice = input("Input: ").strip()
         if choice == "0":
@@ -158,37 +186,35 @@ def prompt_select_input(inputs: list[str]) -> list[str]:
             return list(inputs)
         indices = parse_selection(choice, len(inputs))
         if indices is None:
-            print("\nInvalid Input: enter one or more listed numbers, or [Enter] for all.")
-            input("[Enter] to continue...")
+            error = True
             continue
         return [inputs[i] for i in indices]
 
 
-def prompt_mode() -> bool:
+def prompt_mode(selected: list[str]) -> bool:
     """Shows the mode-selection screen, returns True for Working mode
-    (preserve formulas). Raises BackOneStep on [0], UserCancelled on [00]."""
+    (preserve formulas). Raises BackOneStep on [0]. No default: empty input
+    is invalid."""
+    error = False
     while True:
-        clear_screen()
-        print_banner()
-        print()
+        open_screen(inputs_block(selected), error)
         print("Select mode:")
+        print()
         print("   [1] Report mode  - flatten everything to static values (system-exported reports)")
         print("   [2] Working mode - keep live formulas (sheets you're still building/using)")
-        print("   [0] Back one step")
-        print("   [00] Cancel & close")
         print()
-        print("-" * 60)
+        print("-" * LINE_WIDTH)
+        print("[#] Select")
+        print("[0] Back")
+        print()
         choice = input("Mode: ").strip()
-        if choice == "00":
-            raise UserCancelled()
         if choice == "0":
             raise BackOneStep()
         if choice == "1":
             return False
         if choice == "2":
             return True
-        print("\nInvalid Input: enter 1, 2, 0, or 00.")
-        input("[Enter] to continue...")
+        error = True
 
 
 def clean_worksheet(ws, preserve_formulas: bool) -> dict:
@@ -314,7 +340,10 @@ def process_workbook(src_path: str, preserve_formulas: bool) -> dict:
 
     excel = win32.DispatchEx("Excel.Application")
     excel.Visible = False
+    excel.DisplayAlerts = False             # no hidden prompt can stall Quit()
     sheet_stats = []
+    wb = None
+    saved = False
     try:
         wb = excel.Workbooks.Open(os.path.abspath(out_path))
         excel.ScreenUpdating = False
@@ -326,9 +355,22 @@ def process_workbook(src_path: str, preserve_formulas: bool) -> dict:
             excel.Calculation = XL_CALC_AUTOMATIC
             excel.ScreenUpdating = True
         wb.Save()
-        wb.Close(False)
+        saved = True
     finally:
+        # Close the workbook on every path, so Excel quits cleanly instead of
+        # holding a dirty workbook (hung / zombie EXCEL.EXE).
+        if wb is not None:
+            try:
+                wb.Close(False)
+            except Exception:
+                pass
         excel.Quit()
+        # A failed run leaves no half-cleaned _clean copy behind.
+        if not saved:
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
 
     return {"output": os.path.basename(out_path), "sheets": sheet_stats}
 
@@ -336,6 +378,9 @@ def process_workbook(src_path: str, preserve_formulas: bool) -> dict:
 def write_error_log(failures: list[dict]) -> None:
     log_path = resolve_collision(f"error log_{datetime.now():%Y%m%d}.txt")
     with open(log_path, "w", encoding="utf-8") as f:
+        f.write(f"Input folder: {os.path.abspath(INPUT_FOLDER)}\n")
+        f.write(f"Output folder: {os.path.abspath(OUTPUT_FOLDER)}\n")
+        f.write("\n")
         for item in failures:
             f.write(f"\"{item['item']}\"\n")
             f.write(f"  Step: {item['step']}\n")
@@ -353,9 +398,10 @@ def main() -> None:
 
     all_inputs = find_input_files()
     if not all_inputs:
-        print(f"\nInputs: 0")
+        print("Inputs: 0")
         print("No Excel files found to clean.")
-        print("-" * 60)
+        print()
+        print("-" * LINE_WIDTH)
         input("[Enter] to close...")
         return
 
@@ -363,20 +409,19 @@ def main() -> None:
         while True:
             selected = prompt_select_input(all_inputs)
             try:
-                preserve_formulas = prompt_mode()
+                preserve_formulas = prompt_mode(selected)
                 break
             except BackOneStep:
                 continue
     except UserCancelled:
-        print("\nCancelled.")
         return
 
     clear_screen()
     print_banner()
+    for line in inputs_block(selected):
+        print(line)
     print()
-    print(f"Inputs: {len(selected)}")
-    for i, name in enumerate(selected, 1):
-        print(f"   {i}. \"{name}\"")
+    print(f"Mode : {'Working' if preserve_formulas else 'Report'}")
 
     outputs = []
     failures = []
@@ -408,12 +453,16 @@ def main() -> None:
             print(f"   {i}. \"{f['item']}\"   :   {f['error']}")
 
     print(f"\nElapsed: {time.time() - start_time:.1f}s")
-    print("-" * 60)
+    print()
+    print("-" * LINE_WIDTH)
+    if not failures:
+        input("[Enter] to close...")
+        return
     print("[Enter] to close...")
-    if failures:
-        print("[0] save error log and close")
-    choice = input("")
-    if choice.strip() == "0" and failures:
+    print("[0] Save error log & close")
+    print()
+    choice = input("Ans: ")
+    if choice.strip() == "0":
         write_error_log(failures)
 
 

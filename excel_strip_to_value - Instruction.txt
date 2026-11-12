@@ -1,5 +1,5 @@
 ================================================================
-  excel_strip_to_value.py - Instruction
+  Excel Strip to Value v1.1_20261113 - Instruction
 ================================================================
 
 ----------------------------------------------------------------
@@ -15,13 +15,14 @@ into real numbers formatted as 1,234.56, and tidies up column widths and
 text alignment. The original file is never touched - a new file is created
 next to it.
 
-STEP 1: Put excel_strip_to_value.py in the same folder as the Excel
-        file(s) you want to clean up.
+STEP 1: Put "Excel Strip to Value.exe" (or excel_strip_to_value.py) in
+        the same folder as the Excel file(s) you want to clean up.
 
-STEP 2: Close those Excel file(s) if they are currently open. The script
-        needs to make and open its own copy of each file.
+STEP 2: If one of those files is open in Excel, save it first. It can
+        stay open - the tool works on its own copy - but changes you
+        have not saved are not in that copy.
 
-STEP 3: Double-click excel_strip_to_value.py. A black window opens and
+STEP 3: Double-click it. A black window opens and
         lists the files it found, asking which ones to clean:
 
         ============================================================
@@ -29,13 +30,14 @@ STEP 3: Double-click excel_strip_to_value.py. A black window opens and
         ============================================================
 
         Select Input:
+
            [1] "OESB -  BS - JUN 26.xlsx"
            [2] "OESB - PL DETAILED -  JUN 26.xlsx"
 
         ------------------------------------------------------------
         [Enter] Select all
         [#] Select (comma-separated for multiple, e.g. 1,3)
-        [0] Cancel & close
+        [0] Exit
 
         Input:
 
@@ -43,24 +45,34 @@ STEP 4: Choose which file(s) to clean, then press Enter:
            [Enter] (nothing typed) = process every file listed.
            A number, e.g. "2"      = process only that one file.
            Several numbers, e.g. "1,3" or "1 3" = process just those files.
-           0 = Cancel - closes the window, no files are touched.
+           0 = Exit - closes the window straight away, no files are touched.
 
-        A number outside the list, or anything that isn't a number, shows
-        "Invalid Input:" and asks again - it won't silently guess.
+        A number outside the list, or anything that isn't a number,
+        brings the same screen back with this line above "Select Input:"
+        - it won't silently guess:
 
-STEP 5: Next it asks which mode to clean in:
+           Error: Invalid Input
+
+STEP 5: Next it asks which mode to clean in. The window is cleared and the
+        file(s) you picked are shown at the top:
 
         ============================================================
         Excel Strip To Value
         ============================================================
 
+        Inputs: 2
+           1. "OESB -  BS - JUN 26.xlsx"
+           2. "OESB - PL DETAILED -  JUN 26.xlsx"
+
         Select mode:
+
            [1] Report mode  - flatten everything to static values (system-exported reports)
            [2] Working mode - keep live formulas (sheets you're still building/using)
-           [0] Back one step
-           [00] Cancel & close
 
         ------------------------------------------------------------
+        [#] Select
+        [0] Back
+
         Mode:
 
 STEP 6: Type a number and press Enter:
@@ -71,10 +83,13 @@ STEP 6: Type a number and press Enter:
                 are still using, that has real formulas in it. Formulas are
                 left alone and kept working; only the text-amount cells
                 around them get converted.
-           0  = Back one step - returns to the file-selection screen in
-                STEP 3 so you can pick different file(s), without closing
-                the window.
-           00 = Cancel - closes the window, no files are touched.
+           0  = Back - returns to the file-selection screen in STEP 3 so
+                you can pick different file(s).
+
+        There is no default here: pressing Enter with nothing typed shows
+        "Error: Invalid Input", so a stray Enter can never pick a mode
+        for you. To stop without cleaning anything, press 0 to go back,
+        then 0 again to exit.
 
 STEP 7: It then runs on its own - you don't need to click or type anything
         else - and shows a report like this:
@@ -87,6 +102,8 @@ STEP 7: It then runs on its own - you don't need to click or type anything
            1. "OESB -  BS - JUN 26.xlsx"
            2. "OESB - PL DETAILED -  JUN 26.xlsx"
 
+        Mode : Report
+
         Processing
         Cleaning "OESB -  BS - JUN 26.xlsx" ...
            Sheet "Page 1" : rows removed 1, cols removed 4, numbers converted 82
@@ -94,23 +111,32 @@ STEP 7: It then runs on its own - you don't need to click or type anything
            Sheet "Page 1" : rows removed 4, cols removed 10, numbers converted 165
 
         Outputs: 2
-           1. "OESB -  BS - JUN 26_Clean.xlsx"
-           2. "OESB - PL DETAILED -  JUN 26_Clean.xlsx"
+           1. "OESB -  BS - JUN 26_clean.xlsx"
+           2. "OESB - PL DETAILED -  JUN 26_clean.xlsx"
 
         Elapsed: 1.6s
+
         ------------------------------------------------------------
         [Enter] to close...
 
 STEP 8: Press [Enter] to close the window. The cleaned file(s) are now in
-        the same folder, named "<original name>_Clean.xlsx". The
+        the same folder, named "<original name>_clean.xlsx" (same
+        extension as the original; "_clean_1", "_clean_2" ... if that
+        name already exists). The
         original file(s) are untouched.
 
 If something fails on one of the files, the window also shows a
-"Failed: n" list and an extra option:
-        [0] save error log and close
-Press [0] instead of [Enter] to save a text log of what went wrong, then
-send that log file along with the input Excel file for Grey/the developer
-to look at.
+"Failed: n" list, and the bottom changes to:
+
+        ------------------------------------------------------------
+        [Enter] to close...
+        [0] Save error log & close
+
+        Ans:
+
+Type 0 and press Enter instead of just Enter to save a text log of what
+went wrong ("error log_YYYYMMDD.txt"), then send that log file along with
+the input Excel file for Grey/the developer to look at.
 
 ----------------------------------------------------------------
   FOR DEVELOPER(S)
@@ -118,25 +144,38 @@ to look at.
 
 Scope: every .xlsx / .xlsm / .xls file sitting next to the script is a
 candidate (every worksheet in each workbook gets processed), except
-Excel's own lock files ("~$...") and anything already ending in
-"_Clean.xlsx" (so re-runs don't try to clean their own output). Which of
+Excel's own lock files ("~$...") and the script's own output: any name
+ending in "_clean" or "_clean_<n>" before the extension, case-insensitive
+so outputs from older "_Clean" versions are skipped too
+(OUTPUT_NAME_PATTERN; re-runs never clean their own output). Which of
 those candidates actually get processed in a given run is then narrowed
 by prompt_select_input().
 
 Two-screen prompt, one shared pipeline: prompt_select_input() returns the
-chosen subset of filenames; prompt_mode() returns a single
-preserve_formulas bool. main() loops the two screens together: [0] at
-the file-selection screen or [00] at the mode screen raises
-UserCancelled, caught once in main() - the cancel/abort signal never
-travels as a sentinel return value through the call stack. [0] at the
-mode screen instead raises BackOneStep, caught locally in that same loop
-to re-show the file-selection screen (preserving the full candidate
-list, not the previous selection) - a deliberate second exception class
+chosen subset of filenames; prompt_mode(selected) returns a single
+preserve_formulas bool. main() loops the two screens together: [0] Exit
+at the file-selection screen raises UserCancelled, caught once in main(),
+which returns silently - the window closes with no screen. [0] Back at
+the mode screen raises BackOneStep, caught locally in that same loop to
+re-show the file-selection screen (preserving the full candidate list,
+not the previous selection) - a deliberate second exception class
 alongside UserCancelled, since "go back a screen" and "abort the whole
-run" are different signals with different catch sites. Both prompts
-redraw from a blank screen (clear_screen() + print_banner()) on every
-loop iteration, including after an invalid-input retry, so a screen is
-always shown complete rather than appended onto whatever was above it.
+run" are different signals with different catch sites. There is no [00]:
+the script has only two prompt screens, so [0] Back then [0] Exit is the
+way out.
+
+Every screen starts with open_screen(choices, error): clear_screen()
+("cls"), the banner, the choices made so far (the mode screen shows the
+Inputs block of the selected files), then "Error: Invalid Input" when
+the previous try was rejected. Invalid input just sets the error flag and
+loops - the screen is redrawn complete, with no extra [Enter] pause. The
+mode screen has no default: empty input is invalid, because Report mode
+flattens formulas and cannot be undone on that output.
+
+The run report repeats the Inputs block and adds a "Mode : Report" /
+"Mode : Working" value line, since the clear wiped the screen that showed
+which mode was picked.
+
 preserve_formulas is threaded through process_workbook() into
 clean_worksheet() same as before. When preserve_formulas is True, one
 extra bulk read (used.Formula, same shape as used.Value, one COM call for
@@ -204,9 +243,43 @@ indentation-depth layout described above. That whole column gets the
 accounting number format applied - harmless, since NumberFormat has no
 visible effect on a text-valued cell.
 
+Error log: written only when [0] is pressed on the final screen. The
+header carries the resolved "Input folder:" and "Output folder:" paths,
+then one entry per failed file (Step, Error, Traceback).
+
+Failure cleanup: process_workbook() closes the workbook (unsaved) in a
+finally block on every path, so a mid-clean failure cannot leave a dirty
+workbook holding a hidden EXCEL.EXE open; DisplayAlerts is off so no
+invisible prompt can stall Quit(). The "_clean" copy is deleted if the
+run did not reach wb.Save(), so a failed file leaves no output behind.
+
+Known limitations:
+  - "Elapsed" is timed from launch, so it includes the time spent on
+    the selection screens.
+  - Screen clearing uses the Windows "cls" command: it works when
+    double-clicked or run in cmd / PowerShell, not in an IDE output
+    panel.
+
+Open input files: the input is copied (shutil copy works on a file Excel
+has open) and only the copy is opened, in the script's own DispatchEx
+instance - the user's open workbook is never touched, but unsaved edits
+are not in the copy.
+
 Dependencies: pywin32 (win32com.client), and Microsoft Excel must actually
 be installed on the machine - this drives real Excel via COM automation,
 it does not use a file-format library. Windows only.
+
+Versioning: v{major}.{minor}_{YYYYMMDD}. Update VERSION in the script,
+version_info.txt and this file together.
+
+Packaging (clean venv, so the exe only bundles what the script needs):
+      python -m venv venv
+      venv\Scripts\pip install pyinstaller pywin32
+      venv\Scripts\python -m PyInstaller --onefile --console ^
+        --name "Excel Strip to Value" --version-file=version_info.txt ^
+        --hidden-import win32com --hidden-import win32com.client ^
+        --hidden-import win32com.server --hidden-import pywintypes ^
+        excel_strip_to_value.py
 
 ----------------------------------------------------------------
   ENVIRONMENT SETUP (one-time only)
@@ -222,5 +295,6 @@ it does not use a file-format library. Windows only.
 ----------------------------------------------------------------
 
 Author:       Yeoh Huey Sun
-Last updated: 2026-11-11
+Version:      v1.1_20261113
+Last updated: 2026-11-13
 ================================================================
